@@ -65,7 +65,7 @@ class AirLabDownloader(object):
     def __init__(self, bucket_name = 'tartanair') -> None:
         from minio import Minio
         endpoint_url = "airlab-share-01.andrew.cmu.edu:9000"
-        # public key (for donloading): 
+        # public key (for donloading):
         access_key = "4e54CkGDFg2RmPjaQYmW"
         secret_key = "mKdGwketlYUcXQwcPxuzinSxJazoyMpAip47zYdl"
 
@@ -74,6 +74,10 @@ class AirLabDownloader(object):
 
     def download(self, filelist, destination_path):
         target_filelist = []
+
+        file_with_size = [(source_file_name, self.client.stat_object(self.bucket_name, source_file_name).size) for source_file_name in filelist]
+        file_with_size.sort(key=lambda x: x[1])
+        filelist = [ff[0] for ff in file_with_size]
 
         for source_file_name in filelist:
             target_file_name = join(destination_path, source_file_name.replace('/', '_'))
@@ -85,22 +89,34 @@ class AirLabDownloader(object):
 
             print(f"  Downloading {source_file_name} from {self.bucket_name}...")
 
-            # add progress bar
             from tqdm import tqdm
+            from minio.helpers import ProgressType
+            # 获取文件大小
+            file_size = self.client.stat_object(self.bucket_name, source_file_name).size
+            print(f"File {source_file_name} with size: {file_size/1024.0/1024.0/1024.0} GB")
+            # 创建符合 ProgressType 协议的进度对象
+            class TqdmProgress(ProgressType):
+                def __init__(self, file_size, source_file_name):
+                    self.bar = tqdm(total=file_size, unit='B', unit_scale=True, desc=f"  {source_file_name}")
+                def set_meta(self, object_name, total_length):
+                    # 这个方法在 fget_object 内部会被调用
+                    pass
 
-            stat = self.client.stat_object(self.bucket_name, source_file_name)
-            file_size = stat.size
+                def update(self, length):
+                    self.bar.update(length)
+                def __del__(self):
+                    self.bar.close() # 关闭进度条
+            # 创建进度条
+            progress = TqdmProgress(file_size, source_file_name)
 
-            # self.client.fget_object(self.bucket_name, source_file_name, target_file_name)
-            # 直接用get_object流式下载，手动写入文件并更新进度条
-            response = self.client.get_object(self.bucket_name, source_file_name)
-            with open(target_file_name, 'wb') as f, tqdm(total=file_size, unit='B', unit_scale=True, desc=f"Downloading {source_file_name}") as progress_bar:
-                for data in response.stream(1024 * 1024):
-                    f.write(data)
-                    progress_bar.update(len(data))
+            self.client.fget_object(
+                self.bucket_name,
+                source_file_name,
+                target_file_name,
+                progress=progress
+            )
+
             print(f"  Successfully downloaded {source_file_name} to {target_file_name}!")
-            response.close()
-            response.release_conn()
 
         return True, target_filelist
 

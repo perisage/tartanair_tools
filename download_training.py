@@ -30,6 +30,9 @@ def get_args():
     parser.add_argument('--seg', action='store_true', default=False,
                         help='download segmentation image')
 
+    parser.add_argument('--scenes', nargs='+', default=None,
+                        help='specify a list of scene names to download, e.g. --scenes abandonedfactory hospital')
+
     parser.add_argument('--only-easy', action='store_true', default=False,
                         help='download only easy trajectories')
 
@@ -60,6 +63,16 @@ def get_args():
 
 def _help():
     print ('')
+
+def get_scenes() -> [str]:
+    scenes = []
+    with open('download_training_zipfiles.txt') as f:
+        lines = f.readlines()
+        for line in lines:
+            scene = line.split('/')[0]
+            scenes.append(scene)
+    scenes = list(set(scenes))
+    return scenes
 
 class AirLabDownloader(object):
     def __init__(self, bucket_name = 'tartanair') -> None:
@@ -213,41 +226,48 @@ if __name__ == '__main__':
         print('Output dir {} does not exists!'.format(outdir))
         exit()
 
+    all_scenes = get_scenes()
+
+    scene_list = all_scenes if args.scenes is None else args.scenes
+    if not all([ss in all_scenes for ss in scene_list]):
+        print('Invalid scene name!')
+        exit()
+    print('Downloading scenes: {}'.format(scene_list))
+
     # difficulty level
-    levellist = ['Easy', 'Hard']
+    level_list = ['Easy', 'Hard']
     if args.only_easy:
-        levellist = ['Easy']
+        level_list = ['Easy']
     if args.only_hard:
-        levellist = ['Hard']
+        level_list = ['Hard']
     if args.only_easy and args.only_hard:
         print('--only-eazy and --only-hard tags can not be set at the same time!')
         exit()
 
-
     # filetype
-    typelist = []
+    type_list = []
     if args.rgb:
-        typelist.append('image')
+        type_list.append('image')
     if args.depth:
-        typelist.append('depth')
+        type_list.append('depth')
     if args.seg:
-        typelist.append('seg')
+        type_list.append('seg')
     if args.flow:
-        typelist.append('flow')
-    if len(typelist)==0:
+        type_list.append('flow')
+    if len(type_list)==0:
         print('Specify the type of data you want to download by --rgb/depth/seg/flow')
         exit()
 
-    # camera 
-    cameralist = ['left', 'right', 'flow', 'mask']
+    # camera
+    camera_list = ['left', 'right', 'flow', 'mask']
     if args.only_left:
-        cameralist.remove('right')
+        camera_list.remove('right')
     if args.only_right:
-        cameralist.remove('left')
+        camera_list.remove('left')
     if args.only_flow:
-        cameralist.remove('mask')
+        camera_list.remove('mask')
     if args.only_mask:
-        cameralist.remove('flow')
+        camera_list.remove('flow')
     if args.only_left and args.only_right:
         print('--only-left and --only-right tags can not be set at the same time!')
         exit()
@@ -260,33 +280,35 @@ if __name__ == '__main__':
         lines = f.readlines()
     zipsizelist = [ll.strip().split() for ll in lines if ll.strip().split()[0].endswith('.zip')]
 
-    downloadlist = []
+    download_list = []
     for zipfile, _ in zipsizelist:
         zf = zipfile.split('/')
         filename = zf[-1]
         difflevel = zf[-2]
 
+        # office/office2/soulcity
+        scene_type = zf[0]
         # image/depth/seg/flow
-        filetype = filename.split('_')[0] 
+        filetype = filename.split('_')[0]
         # left/right/flow/mask
         cameratype = filename.split('.')[0].split('_')[-1]
-        
-        if (difflevel in levellist) and (filetype in typelist) and (cameratype in cameralist):
-            downloadlist.append(zipfile) 
 
-    if len(downloadlist)==0:
+        if (difflevel in level_list) and (filetype in type_list) and (cameratype in camera_list) and (scene_type in scene_list):
+            download_list.append(zipfile)
+
+    if len(download_list)==0:
         print('No file meets the condition!')
         exit()
 
-    print_highlight('{} files are going to be downloaded...'.format(len(downloadlist)))
-    for fileurl in downloadlist:
+    print_highlight('{} files are going to be downloaded...'.format(len(download_list)))
+    for fileurl in download_list:
         print ('  -', fileurl)
 
-    all_size = get_size(zipsizelist, downloadlist)
+    all_size = get_size(zipsizelist, download_list)
     print_highlight('*** Total Size: {} GB ***'.format(all_size))
 
     # download_from_cloudflare_r2(s3, downloadlist, outdir, bucket_name)
-    res, downloadfilelist = downloader.download(downloadlist, outdir)
+    res, downloadfilelist = downloader.download(download_list, outdir)
 
     if args.unzip:
         unzip_files(downloadfilelist, outdir)

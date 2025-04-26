@@ -84,8 +84,23 @@ class AirLabDownloader(object):
                 return False, None
 
             print(f"  Downloading {source_file_name} from {self.bucket_name}...")
-            self.client.fget_object(self.bucket_name, source_file_name, target_file_name)
+
+            # add progress bar
+            from tqdm import tqdm
+
+            stat = self.client.stat_object(self.bucket_name, source_file_name)
+            file_size = stat.size
+
+            # self.client.fget_object(self.bucket_name, source_file_name, target_file_name)
+            # 直接用get_object流式下载，手动写入文件并更新进度条
+            response = self.client.get_object(self.bucket_name, source_file_name)
+            with open(target_file_name, 'wb') as f, tqdm(total=file_size, unit='B', unit_scale=True, desc=f"Downloading {source_file_name}") as progress_bar:
+                for data in response.stream(1024 * 1024):
+                    f.write(data)
+                    progress_bar.update(len(data))
             print(f"  Successfully downloaded {source_file_name} to {target_file_name}!")
+            response.close()
+            response.release_conn()
 
         return True, target_filelist
 

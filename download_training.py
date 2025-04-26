@@ -1,4 +1,4 @@
-from os import system, mkdir
+from os import system
 import argparse
 from os.path import isdir, isfile, join
 from colorama import Fore, Style

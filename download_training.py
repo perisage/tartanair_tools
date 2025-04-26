@@ -64,7 +64,7 @@ def get_args():
 def _help():
     print ('')
 
-def get_scenes() -> [str]:
+def get_scenes() -> list[str]:
     scenes = []
     with open('download_training_zipfiles.txt') as f:
         lines = f.readlines()
